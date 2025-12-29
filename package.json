@@ -1,0 +1,32 @@
+{
+  "name": "api-fuyou",
+  "version": "1.0.0",
+  "description": "蜉蝣后端 API",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "extract:data": "node scripts/extract-data-to-json.js",
+    "migrate:products": "node scripts/migrate-products.js",
+    "create:super-admin": "node scripts/create-super-admin.js"
+  },
+  "keywords": [
+    "express",
+    "api",
+    "mongodb",
+    "jwt"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongoose": "^7.6.3",
+    "jsonwebtoken": "^9.0.2",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.3.1",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
