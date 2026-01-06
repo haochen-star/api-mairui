@@ -1,13 +1,38 @@
-const Product = require('../models/Product');
-const mongoose = require('mongoose');
+const Product = require('../models/Product')
+const mongoose = require('mongoose')
+
+// ELISA试剂盒子类型
+const ELISA_KIT_SUBTYPES = [
+  { label: '猪 ELISA科研试剂盒', value: 'elisa_kit_pig' },
+  { label: '大鼠 ELISA科研试剂盒', value: 'elisa_kit_rat' },
+  { label: '小鼠 ELISA科研试剂盒', value: 'elisa_kit_mouse' },
+  { label: '猫 ELISA科研试剂盒', value: 'elisa_kit_cat' },
+  { label: '牛 ELISA科研试剂盒', value: 'elisa_kit_cattle' },
+  { label: '山羊/绵羊 ELISA科研试剂盒', value: 'elisa_kit_goat_sheep' },
+  { label: '鸡 ELISA科研试剂盒', value: 'elisa_kit_chicken' },
+  { label: '兔 ELISA科研试剂盒', value: 'elisa_kit_rabbit' },
+  { label: '鱼 ELISA科研试剂盒', value: 'elisa_kit_fish' },
+  { label: '犬 ELISA科研试剂盒', value: 'elisa_kit_dog' },
+  {
+    label: '农残 ELISA科研试剂盒 (竞争法)',
+    value: 'elisa_kit_pesticide_residue'
+  },
+  { label: '昆虫 ELISA科研试剂盒', value: 'elisa_kit_insect' },
+  { label: '其它 ELISA科研试剂盒 (马/豚鼠/鸭)', value: 'elisa_kit_other' },
+  { label: '人 ELISA科研试剂盒', value: 'elisa_kit_human' }
+]
 
 // 产品类型常量
 const PRODUCT_TYPES = [
-  { label: 'ELISA试剂盒', value: 'elisa_kit' },
-  { label: '酪酰胺多色荧光染色试剂盒', value: 'tyramide_tsa_kit' },
-  { label: '科研检测试剂', value: 'research_test_reagent' },
+  {
+    label: 'ELISA试剂盒',
+    value: 'elisa_kit',
+    children: ELISA_KIT_SUBTYPES
+  },
+  // { label: '酪酰胺多色荧光染色试剂盒', value: 'tyramide_tsa_kit' },
+  { label: '重组兔单克隆抗体', value: 'research_test_reagent' },
   { label: '其他', value: 'other' }
-];
+]
 
 /**
  * 格式化产品返回数据，统一处理 details 字段
@@ -24,9 +49,9 @@ const formatProductResponse = (product) => {
     type: product.type,
     createdAt: product.createdAt,
     details: product.details || null
-  };
-  return formatted;
-};
+  }
+  return formatted
+}
 
 /**
  * 获取产品类型列表
@@ -41,16 +66,16 @@ const getProductTypes = (req, res) => {
       data: {
         types: PRODUCT_TYPES
       }
-    });
+    })
   } catch (error) {
-    console.error('获取产品类型列表错误:', error);
+    console.error('获取产品类型列表错误:', error)
     res.status(500).json({
       success: false,
       message: '服务器内部错误',
       error: error.message
-    });
+    })
   }
-};
+}
 
 /**
  * 创建产品
@@ -59,18 +84,18 @@ const getProductTypes = (req, res) => {
  */
 const createProduct = async (req, res) => {
   try {
-    const { type, productNo, cnName, productSpec, price, details } = req.body;
-    
+    const { type, productNo, cnName, productSpec, price, details } = req.body
+
     // 验证必填字段
     if (!productNo) {
       return res.status(400).json({
         success: false,
         message: '货号不能为空'
-      });
+      })
     }
-    
+
     // 检查数据库连接状态
-    const dbStatus = mongoose.connection.readyState;
+    const dbStatus = mongoose.connection.readyState
     if (dbStatus !== 1) {
       return res.status(503).json({
         success: false,
@@ -79,32 +104,36 @@ const createProduct = async (req, res) => {
           dbStatus: dbStatus,
           info: '请先确保数据库连接正常'
         }
-      });
+      })
     }
-    
+
     // 统一使用 Product 模型创建
     const productData = {
       productNo,
       cnName: cnName || undefined,
       productSpec: productSpec || undefined,
-      price: price || undefined,
+      // 价格字段支持特殊格式字符串（如：50UL|1300,100UL|2300），确保完整保存
+      price:
+        price !== undefined && price !== null
+          ? String(price).trim()
+          : undefined,
       type,
-      details: type === 'research_test_reagent' ? (details || null) : null
-    };
-    
-    const newProduct = new Product(productData);
-    const savedProduct = await newProduct.save();
-    
+      details: type === 'research_test_reagent' ? details || null : null
+    }
+
+    const newProduct = new Product(productData)
+    const savedProduct = await newProduct.save()
+
     res.status(201).json({
       success: true,
       message: '产品创建成功！',
       data: {
         product: formatProductResponse(savedProduct)
       }
-    });
+    })
   } catch (error) {
-    console.error('创建产品错误:', error);
-    
+    console.error('创建产品错误:', error)
+
     // 处理数据库错误
     if (error.name === 'MongoServerError' || error.name === 'MongooseError') {
       return res.status(500).json({
@@ -112,25 +141,25 @@ const createProduct = async (req, res) => {
         message: '数据库操作失败',
         error: error.message,
         dbInfo: '请检查 MongoDB 连接配置'
-      });
+      })
     }
-    
+
     // 处理验证错误
     if (error.name === 'ValidationError') {
       return res.status(400).json({
         success: false,
         message: '数据验证失败',
         error: error.message
-      });
+      })
     }
-    
+
     res.status(500).json({
       success: false,
       message: '服务器内部错误',
       error: error.message
-    });
+    })
   }
-};
+}
 
 /**
  * 转义正则表达式特殊字符
@@ -138,8 +167,8 @@ const createProduct = async (req, res) => {
  * @returns {string} 转义后的字符串
  */
 function escapeRegex(str) {
-  if (!str) return str;
-  return str.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+  if (!str) return str
+  return str.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')
 }
 
 /**
@@ -149,10 +178,10 @@ function escapeRegex(str) {
  */
 const getProducts = async (req, res) => {
   try {
-    const { type, page = 1, pagesize = 10, cnName } = req.query;
-    
+    const { type, page = 1, pagesize = 10, cnName } = req.query
+
     // 检查数据库连接状态
-    const dbStatus = mongoose.connection.readyState;
+    const dbStatus = mongoose.connection.readyState
     if (dbStatus !== 1) {
       return res.status(503).json({
         success: false,
@@ -161,46 +190,46 @@ const getProducts = async (req, res) => {
           dbStatus: dbStatus,
           info: '请先确保数据库连接正常'
         }
-      });
+      })
     }
-    
+
     // 分页参数
-    const pageNum = parseInt(page, 10) || 1;
-    const pageSize = parseInt(pagesize, 10) || 10;
-    const skip = (pageNum - 1) * pageSize;
-    
+    const pageNum = parseInt(page, 10) || 1
+    const pageSize = parseInt(pagesize, 10) || 10
+    const skip = (pageNum - 1) * pageSize
+
     // 转义搜索关键词中的特殊字符
-    const escapedCnName = cnName ? escapeRegex(cnName) : null;
-    
+    const escapedCnName = cnName ? escapeRegex(cnName) : null
+
     // 统一使用 Product 查询
-    const query = {};
-    
+    const query = {}
+
     // 如果指定了 type，添加类型过滤
     if (type) {
-      query.type = type;
+      query.type = type
     }
-    
+
     // 如果提供了 cnName，添加模糊匹配
     if (escapedCnName) {
-      query.cnName = { $regex: escapedCnName, $options: 'i' };
+      query.cnName = { $regex: escapedCnName, $options: 'i' }
     }
-    
+
     // 查询总数
-    total = await Product.countDocuments(query);
-    
+    total = await Product.countDocuments(query)
+
     // 查询数据
     const foundProducts = await Product.find(query)
       .sort({ id: -1 })
       .skip(skip)
       .limit(pageSize)
-      .exec();
-    
+      .exec()
+
     // 格式化返回数据
-    products = foundProducts.map(product => formatProductResponse(product));
-    
+    products = foundProducts.map((product) => formatProductResponse(product))
+
     // 计算总页数
-    const totalPages = Math.ceil(total / pageSize);
-    
+    const totalPages = Math.ceil(total / pageSize)
+
     res.status(200).json({
       success: true,
       message: '获取产品列表成功！',
@@ -213,10 +242,10 @@ const getProducts = async (req, res) => {
           totalPages
         }
       }
-    });
+    })
   } catch (error) {
-    console.error('获取产品列表错误:', error);
-    
+    console.error('获取产品列表错误:', error)
+
     // 处理数据库错误
     if (error.name === 'MongoServerError' || error.name === 'MongooseError') {
       return res.status(500).json({
@@ -224,16 +253,16 @@ const getProducts = async (req, res) => {
         message: '数据库查询失败',
         error: error.message,
         dbInfo: '请检查 MongoDB 连接配置'
-      });
+      })
     }
-    
+
     res.status(500).json({
       success: false,
       message: '服务器内部错误',
       error: error.message
-    });
+    })
   }
-};
+}
 
 /**
  * 根据 id 或 productNo（货号）获取单个产品
@@ -242,10 +271,10 @@ const getProducts = async (req, res) => {
  */
 const getProductById = async (req, res) => {
   try {
-    const { id } = req.params;
-    
+    const { id } = req.params
+
     // 检查数据库连接状态
-    const dbStatus = mongoose.connection.readyState;
+    const dbStatus = mongoose.connection.readyState
     if (dbStatus !== 1) {
       return res.status(503).json({
         success: false,
@@ -254,21 +283,21 @@ const getProductById = async (req, res) => {
           dbStatus: dbStatus,
           info: '请先确保数据库连接正常'
         }
-      });
+      })
     }
-    
+
     // 判断是数字 ID 还是货号（productNo）
-    const productId = parseInt(id, 10);
-    let product;
-    
+    const productId = parseInt(id, 10)
+    let product
+
     if (!isNaN(productId)) {
       // 如果是数字，按 ID 查询
-      product = await Product.findOne({ id: productId });
+      product = await Product.findOne({ id: productId })
     } else {
       // 如果不是数字，按货号查询
-      product = await Product.findOne({ productNo: id });
+      product = await Product.findOne({ productNo: id })
     }
-    
+
     if (!product) {
       return res.status(404).json({
         success: false,
@@ -277,19 +306,19 @@ const getProductById = async (req, res) => {
           identifier: id,
           info: '请检查产品 ID 或货号是否正确'
         }
-      });
+      })
     }
-    
+
     res.status(200).json({
       success: true,
       message: '获取产品信息成功！',
       data: {
         product: formatProductResponse(product)
       }
-    });
+    })
   } catch (error) {
-    console.error('获取产品错误:', error);
-    
+    console.error('获取产品错误:', error)
+
     // 处理数据库错误
     if (error.name === 'MongoServerError' || error.name === 'MongooseError') {
       return res.status(500).json({
@@ -297,16 +326,16 @@ const getProductById = async (req, res) => {
         message: '数据库查询失败',
         error: error.message,
         dbInfo: '请检查 MongoDB 连接配置'
-      });
+      })
     }
-    
+
     res.status(500).json({
       success: false,
       message: '服务器内部错误',
       error: error.message
-    });
+    })
   }
-};
+}
 
 /**
  * 更新产品
@@ -315,19 +344,19 @@ const getProductById = async (req, res) => {
  */
 const updateProduct = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { type, productNo, cnName, productSpec, price, details } = req.body;
-    
+    const { id } = req.params
+    const { type, productNo, cnName, productSpec, price, details } = req.body
+
     // 验证必填字段
     if (!productNo) {
       return res.status(400).json({
         success: false,
         message: '货号不能为空'
-      });
+      })
     }
-    
+
     // 验证 id 是否为数字
-    const productId = parseInt(id, 10);
+    const productId = parseInt(id, 10)
     if (isNaN(productId)) {
       return res.status(400).json({
         success: false,
@@ -335,11 +364,11 @@ const updateProduct = async (req, res) => {
         data: {
           providedId: id
         }
-      });
+      })
     }
-    
+
     // 检查数据库连接状态
-    const dbStatus = mongoose.connection.readyState;
+    const dbStatus = mongoose.connection.readyState
     if (dbStatus !== 1) {
       return res.status(503).json({
         success: false,
@@ -348,12 +377,12 @@ const updateProduct = async (req, res) => {
           dbStatus: dbStatus,
           info: '请先确保数据库连接正常'
         }
-      });
+      })
     }
-    
+
     // 统一使用 Product 查询和更新
-    const product = await Product.findOne({ id: productId });
-    
+    const product = await Product.findOne({ id: productId })
+
     if (!product) {
       return res.status(404).json({
         success: false,
@@ -362,47 +391,50 @@ const updateProduct = async (req, res) => {
           id: productId,
           info: '请检查产品 ID 是否正确'
         }
-      });
+      })
     }
-    
+
     // 构建更新数据
     const updateData = {
       productNo
-    };
-    
+    }
+
     // 只更新提供的字段
-    if (type !== undefined) updateData.type = type;
-    if (cnName !== undefined) updateData.cnName = cnName;
-    if (productSpec !== undefined) updateData.productSpec = productSpec;
-    if (price !== undefined) updateData.price = price;
-    
+    if (type !== undefined) updateData.type = type
+    if (cnName !== undefined) updateData.cnName = cnName
+    if (productSpec !== undefined) updateData.productSpec = productSpec
+    if (price !== undefined) updateData.price = price
+
     // 如果是 research_test_reagent 类型，更新 details
     if (type === 'research_test_reagent' && details !== undefined) {
-      updateData.details = details;
+      updateData.details = details
     } else if (type !== undefined && type !== 'research_test_reagent') {
       // 如果类型改为非 research_test_reagent，清空 details
-      updateData.details = null;
-    } else if (details !== undefined && product.type === 'research_test_reagent') {
+      updateData.details = null
+    } else if (
+      details !== undefined &&
+      product.type === 'research_test_reagent'
+    ) {
       // 如果产品类型已经是 research_test_reagent，更新 details
-      updateData.details = details;
+      updateData.details = details
     }
-    
+
     const updatedProduct = await Product.findOneAndUpdate(
       { id: productId },
       updateData,
       { new: true, runValidators: true }
-    );
-    
+    )
+
     res.status(200).json({
       success: true,
       message: '产品更新成功！',
       data: {
         product: formatProductResponse(updatedProduct)
       }
-    });
+    })
   } catch (error) {
-    console.error('更新产品错误:', error);
-    
+    console.error('更新产品错误:', error)
+
     // 处理数据库错误
     if (error.name === 'MongoServerError' || error.name === 'MongooseError') {
       return res.status(500).json({
@@ -410,25 +442,25 @@ const updateProduct = async (req, res) => {
         message: '数据库操作失败',
         error: error.message,
         dbInfo: '请检查 MongoDB 连接配置'
-      });
+      })
     }
-    
+
     // 处理验证错误
     if (error.name === 'ValidationError') {
       return res.status(400).json({
         success: false,
         message: '数据验证失败',
         error: error.message
-      });
+      })
     }
-    
+
     res.status(500).json({
       success: false,
       message: '服务器内部错误',
       error: error.message
-    });
+    })
   }
-};
+}
 
 /**
  * 删除产品
@@ -437,10 +469,10 @@ const updateProduct = async (req, res) => {
  */
 const deleteProduct = async (req, res) => {
   try {
-    const { id } = req.params;
-    
+    const { id } = req.params
+
     // 验证 id 是否为数字
-    const productId = parseInt(id, 10);
+    const productId = parseInt(id, 10)
     if (isNaN(productId)) {
       return res.status(400).json({
         success: false,
@@ -448,11 +480,11 @@ const deleteProduct = async (req, res) => {
         data: {
           providedId: id
         }
-      });
+      })
     }
-    
+
     // 检查数据库连接状态
-    const dbStatus = mongoose.connection.readyState;
+    const dbStatus = mongoose.connection.readyState
     if (dbStatus !== 1) {
       return res.status(503).json({
         success: false,
@@ -461,12 +493,12 @@ const deleteProduct = async (req, res) => {
           dbStatus: dbStatus,
           info: '请先确保数据库连接正常'
         }
-      });
+      })
     }
-    
+
     // 先查找产品，确认是否存在
-    const product = await Product.findOne({ id: productId });
-    
+    const product = await Product.findOne({ id: productId })
+
     if (!product) {
       return res.status(404).json({
         success: false,
@@ -475,12 +507,12 @@ const deleteProduct = async (req, res) => {
           id: productId,
           info: '请检查产品 ID 是否正确'
         }
-      });
+      })
     }
-    
+
     // 删除产品
-    await Product.deleteOne({ id: productId });
-    
+    await Product.deleteOne({ id: productId })
+
     res.status(200).json({
       success: true,
       message: '产品删除成功！',
@@ -492,10 +524,10 @@ const deleteProduct = async (req, res) => {
           type: product.type
         }
       }
-    });
+    })
   } catch (error) {
-    console.error('删除产品错误:', error);
-    
+    console.error('删除产品错误:', error)
+
     // 处理数据库错误
     if (error.name === 'MongoServerError' || error.name === 'MongooseError') {
       return res.status(500).json({
@@ -503,16 +535,16 @@ const deleteProduct = async (req, res) => {
         message: '数据库操作失败',
         error: error.message,
         dbInfo: '请检查 MongoDB 连接配置'
-      });
+      })
     }
-    
+
     res.status(500).json({
       success: false,
       message: '服务器内部错误',
       error: error.message
-    });
+    })
   }
-};
+}
 
 /**
  * 批量删除产品
@@ -521,18 +553,20 @@ const deleteProduct = async (req, res) => {
  */
 const bulkDeleteProducts = async (req, res) => {
   try {
-    const { ids } = req.body;
-    
+    const { ids } = req.body
+
     // 验证请求体
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({
         success: false,
         message: '请求体必须包含非空的产品 ID 数组'
-      });
+      })
     }
-    
+
     // 验证所有 ID 都是数字
-    const productIds = ids.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+    const productIds = ids
+      .map((id) => parseInt(id, 10))
+      .filter((id) => !isNaN(id))
     if (productIds.length !== ids.length) {
       return res.status(400).json({
         success: false,
@@ -541,11 +575,11 @@ const bulkDeleteProducts = async (req, res) => {
           providedIds: ids,
           validIds: productIds
         }
-      });
+      })
     }
-    
+
     // 检查数据库连接状态
-    const dbStatus = mongoose.connection.readyState;
+    const dbStatus = mongoose.connection.readyState
     if (dbStatus !== 1) {
       return res.status(503).json({
         success: false,
@@ -554,12 +588,12 @@ const bulkDeleteProducts = async (req, res) => {
           dbStatus: dbStatus,
           info: '请先确保数据库连接正常'
         }
-      });
+      })
     }
-    
+
     // 批量删除产品
-    const deleteResult = await Product.deleteMany({ id: { $in: productIds } });
-    
+    const deleteResult = await Product.deleteMany({ id: { $in: productIds } })
+
     res.status(200).json({
       success: true,
       message: `成功删除 ${deleteResult.deletedCount} 个产品`,
@@ -568,10 +602,10 @@ const bulkDeleteProducts = async (req, res) => {
         deletedIds: productIds,
         requestedCount: productIds.length
       }
-    });
+    })
   } catch (error) {
-    console.error('批量删除产品错误:', error);
-    
+    console.error('批量删除产品错误:', error)
+
     // 处理数据库错误
     if (error.name === 'MongoServerError' || error.name === 'MongooseError') {
       return res.status(500).json({
@@ -579,16 +613,16 @@ const bulkDeleteProducts = async (req, res) => {
         message: '数据库操作失败',
         error: error.message,
         dbInfo: '请检查 MongoDB 连接配置'
-      });
+      })
     }
-    
+
     res.status(500).json({
       success: false,
       message: '服务器内部错误',
       error: error.message
-    });
+    })
   }
-};
+}
 
 /**
  * 批量创建产品
@@ -597,18 +631,18 @@ const bulkDeleteProducts = async (req, res) => {
  */
 const bulkCreateProducts = async (req, res) => {
   try {
-    const products = req.body.products;
-    
+    const products = req.body.products
+
     // 验证请求体
     if (!Array.isArray(products) || products.length === 0) {
       return res.status(400).json({
         success: false,
         message: '请求体必须包含非空的产品数组'
-      });
+      })
     }
-    
+
     // 检查数据库连接状态
-    const dbStatus = mongoose.connection.readyState;
+    const dbStatus = mongoose.connection.readyState
     if (dbStatus !== 1) {
       return res.status(503).json({
         success: false,
@@ -617,58 +651,67 @@ const bulkCreateProducts = async (req, res) => {
           dbStatus: dbStatus,
           info: '请先确保数据库连接正常'
         }
-      });
+      })
     }
-    
+
     // 预分配 ID：先查询最后一个产品的 id，避免并发冲突
-    const lastProduct = await Product.findOne({ 
-      id: { $exists: true, $ne: null, $type: 'number' } 
-    }).sort({ id: -1 }).exec();
-    
-    let nextId = 1;
-    if (lastProduct && typeof lastProduct.id === 'number' && !isNaN(lastProduct.id)) {
-      nextId = lastProduct.id + 1;
+    const lastProduct = await Product.findOne({
+      id: { $exists: true, $ne: null, $type: 'number' }
+    })
+      .sort({ id: -1 })
+      .exec()
+
+    let nextId = 1
+    if (
+      lastProduct &&
+      typeof lastProduct.id === 'number' &&
+      !isNaN(lastProduct.id)
+    ) {
+      nextId = lastProduct.id + 1
     }
-    
+
     // 存储成功创建的产品和失败的信息
-    const createdProducts = [];
-    const errors = [];
-    
+    const createdProducts = []
+    const errors = []
+
     // 顺序处理所有产品创建，避免 ID 冲突
     for (let index = 0; index < products.length; index++) {
-      const productData = products[index];
+      const productData = products[index]
       try {
-        const { type, productNo, cnName, productSpec, price, details } = productData;
-        
+        const { type, productNo, cnName, productSpec, price, details } =
+          productData
+
         // 验证必填字段
         if (!productNo) {
-          throw new Error(`第 ${index + 1} 个产品缺少货号`);
+          throw new Error(`第 ${index + 1} 个产品缺少货号`)
         }
-        
+
         // 统一使用 Product 模型创建，预分配唯一 id
         const newProductData = {
           id: nextId + index, // 预分配唯一 id，避免并发冲突
           productNo,
           cnName: cnName || undefined,
           productSpec: productSpec || undefined,
-          price: price || undefined,
+          // 确保价格字段正确保存，即使为空字符串也保存
+          price:
+            price !== undefined && price !== null ? String(price).trim() : '',
           type,
-          details: type === 'research_test_reagent' ? (details || null) : null
-        };
-        
-        const newProduct = new Product(newProductData);
-        const savedProduct = await newProduct.save();
-        
-        createdProducts.push(formatProductResponse(savedProduct));
+          details: type === 'research_test_reagent' ? details || null : null
+        }
+
+        const newProduct = new Product(newProductData)
+        const savedProduct = await newProduct.save()
+
+        createdProducts.push(formatProductResponse(savedProduct))
       } catch (error) {
         errors.push({
           index,
           product: productData,
           error: error.message
-        });
+        })
       }
     }
-    
+
     // 构造响应
     const responseData = {
       success: true,
@@ -676,18 +719,18 @@ const bulkCreateProducts = async (req, res) => {
       data: {
         products: createdProducts
       }
-    };
-    
+    }
+
     // 如果有错误，添加错误信息到响应中
     if (errors.length > 0) {
-      responseData.message += `，${errors.length} 个产品创建失败`;
-      responseData.errors = errors;
+      responseData.message += `，${errors.length} 个产品创建失败`
+      responseData.errors = errors
     }
-    
-    res.status(201).json(responseData);
+
+    res.status(201).json(responseData)
   } catch (error) {
-    console.error('批量创建产品错误:', error);
-    
+    console.error('批量创建产品错误:', error)
+
     // 处理数据库错误
     if (error.name === 'MongoServerError' || error.name === 'MongooseError') {
       return res.status(500).json({
@@ -695,25 +738,25 @@ const bulkCreateProducts = async (req, res) => {
         message: '数据库操作失败',
         error: error.message,
         dbInfo: '请检查 MongoDB 连接配置'
-      });
+      })
     }
-    
+
     // 处理验证错误
     if (error.name === 'ValidationError') {
       return res.status(400).json({
         success: false,
         message: '数据验证失败',
         error: error.message
-      });
+      })
     }
-    
+
     res.status(500).json({
       success: false,
       message: '服务器内部错误',
       error: error.message
-    });
+    })
   }
-};
+}
 
 module.exports = {
   getProductTypes,
@@ -724,4 +767,4 @@ module.exports = {
   updateProduct,
   deleteProduct,
   bulkDeleteProducts
-};
+}
