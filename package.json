@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
+    "check:connection": "node scripts/check-connection.js",
     "extract:data": "node scripts/extract-data-to-json.js",
     "migrate:products": "node scripts/migrate-products.js",
     "create:super-admin": "node scripts/create-super-admin.js"
