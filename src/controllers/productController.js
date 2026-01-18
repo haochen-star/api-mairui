@@ -1,38 +1,6 @@
 const Product = require('../models/Product')
+const ProductType = require('../models/ProductType')
 const mongoose = require('mongoose')
-
-// ELISA试剂盒子类型
-const ELISA_KIT_SUBTYPES = [
-  { label: '猪 ELISA科研试剂盒', value: 'elisa_kit_pig' },
-  { label: '大鼠 ELISA科研试剂盒', value: 'elisa_kit_rat' },
-  { label: '小鼠 ELISA科研试剂盒', value: 'elisa_kit_mouse' },
-  { label: '猫 ELISA科研试剂盒', value: 'elisa_kit_cat' },
-  { label: '牛 ELISA科研试剂盒', value: 'elisa_kit_cattle' },
-  { label: '山羊/绵羊 ELISA科研试剂盒', value: 'elisa_kit_goat_sheep' },
-  { label: '鸡 ELISA科研试剂盒', value: 'elisa_kit_chicken' },
-  { label: '兔 ELISA科研试剂盒', value: 'elisa_kit_rabbit' },
-  { label: '鱼 ELISA科研试剂盒', value: 'elisa_kit_fish' },
-  { label: '犬 ELISA科研试剂盒', value: 'elisa_kit_dog' },
-  {
-    label: '农残 ELISA科研试剂盒 (竞争法)',
-    value: 'elisa_kit_pesticide_residue'
-  },
-  { label: '昆虫 ELISA科研试剂盒', value: 'elisa_kit_insect' },
-  { label: '其它 ELISA科研试剂盒 (马/豚鼠/鸭)', value: 'elisa_kit_other' },
-  { label: '人 ELISA科研试剂盒', value: 'elisa_kit_human' }
-]
-
-// 产品类型常量
-const PRODUCT_TYPES = [
-  {
-    label: 'ELISA试剂盒',
-    value: 'elisa_kit',
-    children: ELISA_KIT_SUBTYPES
-  },
-  // { label: '酪酰胺多色荧光染色试剂盒', value: 'tyramide_tsa_kit' },
-  { label: '重组兔单克隆抗体', value: 'research_test_reagent' },
-  { label: '其他', value: 'other' }
-]
 
 /**
  * 格式化产品返回数据，统一处理 details 字段
@@ -54,17 +22,77 @@ const formatProductResponse = (product) => {
 }
 
 /**
+ * 构建树形结构
+ * @param {Array} types - 所有类型数组
+ * @returns {Array} 树形结构数组
+ */
+function buildTree(types) {
+  const typeMap = new Map()
+  const rootTypes = []
+
+  // 创建类型映射
+  types.forEach((type) => {
+    typeMap.set(type.id, {
+      id: type.id,
+      label: type.label,
+      parentId: type.parentId,
+      hasDetails: type.hasDetails,
+      children: []
+    })
+  })
+
+  // 构建树形结构
+  types.forEach((type) => {
+    const typeNode = typeMap.get(type.id)
+    if (type.parentId === null || type.parentId === undefined) {
+      // 根节点
+      rootTypes.push(typeNode)
+    } else {
+      // 子节点
+      const parent = typeMap.get(type.parentId)
+      if (parent) {
+        parent.children.push(typeNode)
+      } else {
+        // 如果找不到父节点，也作为根节点处理
+        rootTypes.push(typeNode)
+      }
+    }
+  })
+
+  return rootTypes
+}
+
+/**
  * 获取产品类型列表
  * @param {Object} req - Express 请求对象
  * @param {Object} res - Express 响应对象
  */
-const getProductTypes = (req, res) => {
+const getProductTypes = async (req, res) => {
   try {
+    // 检查数据库连接状态
+    const dbStatus = mongoose.connection.readyState
+    if (dbStatus !== 1) {
+      return res.status(503).json({
+        success: false,
+        message: '数据库未连接',
+        data: {
+          dbStatus: dbStatus,
+          info: '请先确保数据库连接正常'
+        }
+      })
+    }
+
+    // 查询所有类型
+    const types = await ProductType.find({}).sort({ id: 1 }).exec()
+
+    // 构建树形结构
+    const tree = buildTree(types)
+
     res.status(200).json({
       success: true,
       message: '获取产品类型列表成功！',
       data: {
-        types: PRODUCT_TYPES
+        types: tree
       }
     })
   } catch (error) {
@@ -107,6 +135,23 @@ const createProduct = async (req, res) => {
       })
     }
 
+    // 验证类型是否存在
+    const typeId = parseInt(type, 10)
+    if (isNaN(typeId)) {
+      return res.status(400).json({
+        success: false,
+        message: '无效的产品类型 ID'
+      })
+    }
+
+    const productType = await ProductType.findOne({ id: typeId })
+    if (!productType) {
+      return res.status(404).json({
+        success: false,
+        message: '产品类型不存在'
+      })
+    }
+
     // 统一使用 Product 模型创建
     const productData = {
       productNo,
@@ -117,8 +162,8 @@ const createProduct = async (req, res) => {
         price !== undefined && price !== null
           ? String(price).trim()
           : undefined,
-      type,
-      details: type === 'research_test_reagent' ? details || null : null
+      type: typeId,
+      details: productType.hasDetails ? details || null : null
     }
 
     const newProduct = new Product(productData)
@@ -206,7 +251,15 @@ const getProducts = async (req, res) => {
 
     // 如果指定了 type，添加类型过滤
     if (type) {
-      query.type = type
+      const typeId = parseInt(type, 10)
+      if (!isNaN(typeId)) {
+        query.type = typeId
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: '无效的产品类型 ID'
+        })
+      }
     }
 
     // 如果提供了 cnName，添加模糊匹配
@@ -400,24 +453,49 @@ const updateProduct = async (req, res) => {
     }
 
     // 只更新提供的字段
-    if (type !== undefined) updateData.type = type
+    if (type !== undefined) {
+      const typeId = parseInt(type, 10)
+      if (isNaN(typeId)) {
+        return res.status(400).json({
+          success: false,
+          message: '无效的产品类型 ID'
+        })
+      }
+
+      // 验证类型是否存在
+      const productType = await ProductType.findOne({ id: typeId })
+      if (!productType) {
+        return res.status(404).json({
+          success: false,
+          message: '产品类型不存在'
+        })
+      }
+
+      updateData.type = typeId
+
+      // 根据类型的 hasDetails 字段决定是否更新 details
+      if (productType.hasDetails && details !== undefined) {
+        updateData.details = details
+      } else if (!productType.hasDetails) {
+        // 如果类型不需要 details，清空 details
+        updateData.details = null
+      }
+    } else if (details !== undefined) {
+      // 如果只更新 details，需要检查当前类型是否需要 details
+      const currentType = await ProductType.findOne({ id: product.type })
+      if (currentType && currentType.hasDetails) {
+        updateData.details = details
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: '当前产品类型不支持 details 字段'
+        })
+      }
+    }
+
     if (cnName !== undefined) updateData.cnName = cnName
     if (productSpec !== undefined) updateData.productSpec = productSpec
     if (price !== undefined) updateData.price = price
-
-    // 如果是 research_test_reagent 类型，更新 details
-    if (type === 'research_test_reagent' && details !== undefined) {
-      updateData.details = details
-    } else if (type !== undefined && type !== 'research_test_reagent') {
-      // 如果类型改为非 research_test_reagent，清空 details
-      updateData.details = null
-    } else if (
-      details !== undefined &&
-      product.type === 'research_test_reagent'
-    ) {
-      // 如果产品类型已经是 research_test_reagent，更新 details
-      updateData.details = details
-    }
 
     const updatedProduct = await Product.findOneAndUpdate(
       { id: productId },
@@ -686,6 +764,18 @@ const bulkCreateProducts = async (req, res) => {
           throw new Error(`第 ${index + 1} 个产品缺少货号`)
         }
 
+        // 验证类型
+        const typeId = parseInt(type, 10)
+        if (isNaN(typeId)) {
+          throw new Error(`第 ${index + 1} 个产品类型 ID 无效`)
+        }
+
+        // 查询类型信息
+        const productType = await ProductType.findOne({ id: typeId })
+        if (!productType) {
+          throw new Error(`第 ${index + 1} 个产品的类型不存在`)
+        }
+
         // 统一使用 Product 模型创建，预分配唯一 id
         const newProductData = {
           id: nextId + index, // 预分配唯一 id，避免并发冲突
@@ -695,8 +785,8 @@ const bulkCreateProducts = async (req, res) => {
           // 确保价格字段正确保存，即使为空字符串也保存
           price:
             price !== undefined && price !== null ? String(price).trim() : '',
-          type,
-          details: type === 'research_test_reagent' ? details || null : null
+          type: typeId,
+          details: productType.hasDetails ? details || null : null
         }
 
         const newProduct = new Product(newProductData)

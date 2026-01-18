@@ -6,6 +6,7 @@ const authRoutes = require('./routes/auth');
 const testRoutes = require('./routes/test');
 const productRoutes = require('./routes/product');
 const userRoutes = require('./routes/user');
+const productTypeRoutes = require('./routes/productType');
 
 // 连接数据库
 connectDB();
@@ -23,6 +24,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/test', testRoutes);
 app.use('/api/product', productRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/product-type', productTypeRoutes);
 
 // 根路由
 app.get('/', (req, res) => {

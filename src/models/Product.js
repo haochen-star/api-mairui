@@ -24,10 +24,10 @@ const productSchema = new mongoose.Schema({
     trim: true
   },
   type: {
-    type: String,
+    type: Number,
     required: [true, '产品类型不能为空'],
-    trim: true,
-    index: true
+    index: true,
+    ref: 'ProductType' // 引用 ProductType 模型的 id
   },
   details: {
     type: mongoose.Schema.Types.Mixed,
