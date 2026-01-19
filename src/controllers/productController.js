@@ -36,6 +36,7 @@ const formatProductResponse = (product, productType = null) => {
       application: details.application || '',
       reactiveSpecies: details.reactiveSpecies || '',
       storageBuffer: details.storageBuffer || '',
+      dilution: details.dilution || '',
       humanGeneId: details.humanGeneId !== undefined ? details.humanGeneId : null,
       humanGeneLink: details.humanGeneLink || '',
       humanSwissprotNo: details.humanSwissprotNo || '',
