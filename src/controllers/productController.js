@@ -5,19 +5,70 @@ const mongoose = require('mongoose')
 /**
  * 格式化产品返回数据，统一处理 details 字段
  * @param {Object} product - Product 对象
+ * @param {Object} productType - ProductType 对象（可选）
  * @returns {Object} 格式化后的产品对象
  */
-const formatProductResponse = (product) => {
+const formatProductResponse = (product, productType = null) => {
+  // 判断是否为复杂类型
+  const hasDetails = productType ? productType.hasDetails : false
+
+  // 基础顶层字段（所有类型都有）
   const formatted = {
     id: product.id,
-    productNo: product.productNo,
-    cnName: product.cnName,
-    productSpec: product.productSpec || '',
+    productNo: product.productNo || '',
+    cnName: product.cnName || '',
+    productImage: product.productImage || '',
     price: product.price || '',
+    background: product.background || '',
+    categoryFlag: product.categoryFlag || '',
     type: product.type,
-    createdAt: product.createdAt,
-    details: product.details || null
+    createdAt: product.createdAt
   }
+
+  // 处理 details 字段
+  if (hasDetails) {
+    // 复杂类型：返回包含所有33个字段的details对象
+    const details = product.details || {}
+    formatted.details = {
+      alias: details.alias || '',
+      geneName: details.geneName || '',
+      proteinName: details.proteinName || '',
+      application: details.application || '',
+      reactiveSpecies: details.reactiveSpecies || '',
+      storageBuffer: details.storageBuffer || '',
+      humanGeneId: details.humanGeneId !== undefined ? details.humanGeneId : null,
+      humanGeneLink: details.humanGeneLink || '',
+      humanSwissprotNo: details.humanSwissprotNo || '',
+      humanSwissprotLink: details.humanSwissprotLink || '',
+      mouseGeneId: details.mouseGeneId !== undefined ? details.mouseGeneId : null,
+      mouseGeneLink: details.mouseGeneLink || '',
+      mouseSwissprotNo: details.mouseSwissprotNo || '',
+      mouseSwissprotLink: details.mouseSwissprotLink || '',
+      ratGeneId: details.ratGeneId !== undefined ? details.ratGeneId : null,
+      ratGeneLink: details.ratGeneLink || '',
+      ratSwissprotNo: details.ratSwissprotNo || '',
+      ratSwissprotLink: details.ratSwissprotLink || '',
+      reference: details.reference || '',
+      referenceMolecularWeight: details.referenceMolecularWeight || '',
+      predictedMolecularWeight: details.predictedMolecularWeight || '',
+      storageCondition: details.storageCondition || '',
+      host: details.host || '',
+      isotype: details.isotype || '',
+      cellLocalization: details.cellLocalization || '',
+      signalingPathway: details.signalingPathway || '',
+      function: details.function || '',
+      stockStatus: details.stockStatus || '',
+      purification: details.purification || '',
+      clonality: details.clonality || '',
+      manual: details.manual || '',
+      img: details.img || '',
+      imgDesc: details.imgDesc || ''
+    }
+  } else {
+    // 简单类型：details 返回 null
+    formatted.details = null
+  }
+
   return formatted
 }
 
@@ -112,7 +163,16 @@ const getProductTypes = async (req, res) => {
  */
 const createProduct = async (req, res) => {
   try {
-    const { type, productNo, cnName, productSpec, price, details } = req.body
+    const {
+      type,
+      productNo,
+      cnName,
+      productImage,
+      price,
+      background,
+      categoryFlag,
+      details
+    } = req.body
 
     // 验证必填字段
     if (!productNo) {
@@ -156,12 +216,14 @@ const createProduct = async (req, res) => {
     const productData = {
       productNo,
       cnName: cnName || undefined,
-      productSpec: productSpec || undefined,
+      productImage: productImage || undefined,
       // 价格字段支持特殊格式字符串（如：50UL|1300,100UL|2300），确保完整保存
       price:
         price !== undefined && price !== null
           ? String(price).trim()
           : undefined,
+      background: background || undefined,
+      categoryFlag: categoryFlag || undefined,
       type: typeId,
       details: productType.hasDetails ? details || null : null
     }
@@ -173,7 +235,7 @@ const createProduct = async (req, res) => {
       success: true,
       message: '产品创建成功！',
       data: {
-        product: formatProductResponse(savedProduct)
+        product: formatProductResponse(savedProduct, productType)
       }
     })
   } catch (error) {
@@ -277,8 +339,23 @@ const getProducts = async (req, res) => {
       .limit(pageSize)
       .exec()
 
+    // 批量查询产品类型信息（优化性能，避免N+1查询）
+    const productTypeIds = [...new Set(foundProducts.map((p) => p.type))]
+    const productTypes = await ProductType.find({
+      id: { $in: productTypeIds }
+    }).exec()
+
+    // 创建产品类型映射表
+    const productTypeMap = new Map()
+    productTypes.forEach((pt) => {
+      productTypeMap.set(pt.id, pt)
+    })
+
     // 格式化返回数据
-    products = foundProducts.map((product) => formatProductResponse(product))
+    products = foundProducts.map((product) => {
+      const productType = productTypeMap.get(product.type) || null
+      return formatProductResponse(product, productType)
+    })
 
     // 计算总页数
     const totalPages = Math.ceil(total / pageSize)
@@ -362,11 +439,14 @@ const getProductById = async (req, res) => {
       })
     }
 
+    // 查询产品类型信息
+    const productType = await ProductType.findOne({ id: product.type })
+
     res.status(200).json({
       success: true,
       message: '获取产品信息成功！',
       data: {
-        product: formatProductResponse(product)
+        product: formatProductResponse(product, productType)
       }
     })
   } catch (error) {
@@ -398,7 +478,16 @@ const getProductById = async (req, res) => {
 const updateProduct = async (req, res) => {
   try {
     const { id } = req.params
-    const { type, productNo, cnName, productSpec, price, details } = req.body
+    const {
+      type,
+      productNo,
+      cnName,
+      productImage,
+      price,
+      background,
+      categoryFlag,
+      details
+    } = req.body
 
     // 验证必填字段
     if (!productNo) {
@@ -494,8 +583,10 @@ const updateProduct = async (req, res) => {
     }
 
     if (cnName !== undefined) updateData.cnName = cnName
-    if (productSpec !== undefined) updateData.productSpec = productSpec
+    if (productImage !== undefined) updateData.productImage = productImage
     if (price !== undefined) updateData.price = price
+    if (background !== undefined) updateData.background = background
+    if (categoryFlag !== undefined) updateData.categoryFlag = categoryFlag
 
     const updatedProduct = await Product.findOneAndUpdate(
       { id: productId },
@@ -503,11 +594,15 @@ const updateProduct = async (req, res) => {
       { new: true, runValidators: true }
     )
 
+    // 查询更新后的产品类型信息
+    const finalTypeId = updateData.type !== undefined ? updateData.type : product.type
+    const finalProductType = await ProductType.findOne({ id: finalTypeId })
+
     res.status(200).json({
       success: true,
       message: '产品更新成功！',
       data: {
-        product: formatProductResponse(updatedProduct)
+        product: formatProductResponse(updatedProduct, finalProductType)
       }
     })
   } catch (error) {
@@ -756,8 +851,16 @@ const bulkCreateProducts = async (req, res) => {
     for (let index = 0; index < products.length; index++) {
       const productData = products[index]
       try {
-        const { type, productNo, cnName, productSpec, price, details } =
-          productData
+        const {
+          type,
+          productNo,
+          cnName,
+          productImage,
+          price,
+          background,
+          categoryFlag,
+          details
+        } = productData
 
         // 验证必填字段
         if (!productNo) {
@@ -781,10 +884,12 @@ const bulkCreateProducts = async (req, res) => {
           id: nextId + index, // 预分配唯一 id，避免并发冲突
           productNo,
           cnName: cnName || undefined,
-          productSpec: productSpec || undefined,
+          productImage: productImage || undefined,
           // 确保价格字段正确保存，即使为空字符串也保存
           price:
             price !== undefined && price !== null ? String(price).trim() : '',
+          background: background || undefined,
+          categoryFlag: categoryFlag || undefined,
           type: typeId,
           details: productType.hasDetails ? details || null : null
         }
@@ -792,7 +897,7 @@ const bulkCreateProducts = async (req, res) => {
         const newProduct = new Product(newProductData)
         const savedProduct = await newProduct.save()
 
-        createdProducts.push(formatProductResponse(savedProduct))
+        createdProducts.push(formatProductResponse(savedProduct, productType))
       } catch (error) {
         errors.push({
           index,

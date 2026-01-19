@@ -15,11 +15,19 @@ const productSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
-  productSpec: {
+  productImage: {
     type: String,
     trim: true
   },
   price: {
+    type: String,
+    trim: true
+  },
+  background: {
+    type: String,
+    trim: true
+  },
+  categoryFlag: {
     type: String,
     trim: true
   },
