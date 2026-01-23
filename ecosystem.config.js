@@ -17,13 +17,21 @@ const getVersionDir = () => {
 
 /**
  * 获取 .env 文件路径
- * 优先级：1. ENV_FILE 环境变量  2. 项目目录下的 .env
+ * 优先级：1. ENV_FILE 环境变量  2. 服务器共享的 .env  3. 项目目录下的 .env
  */
 const getEnvFilePath = () => {
-  // 如果设置了 ENV_FILE 环境变量，使用它（服务器上可以设置共享的 .env）
+  // 如果设置了 ENV_FILE 环境变量，使用它
   if (process.env.ENV_FILE) {
     return process.env.ENV_FILE;
   }
+  
+  // 服务器环境：检查共享的 .env 是否存在
+  const fs = require('fs');
+  const sharedEnvPath = '/var/www/backend-api/.env';
+  if (fs.existsSync(sharedEnvPath)) {
+    return sharedEnvPath;
+  }
+  
   // 否则使用项目目录下的 .env（本地开发或默认情况）
   return path.resolve(__dirname, '.env');
 };
