@@ -1,5 +1,9 @@
 const mongoose = require('mongoose');
-require('dotenv').config();
+const path = require('path');
+
+// 如果指定了 ENV_FILE 环境变量，使用它；否则使用默认的 .env（项目根目录）
+const envPath = process.env.ENV_FILE || path.join(__dirname, '../../.env');
+require('dotenv').config({ path: envPath });
 
 /**
  * 连接 MongoDB 数据库
