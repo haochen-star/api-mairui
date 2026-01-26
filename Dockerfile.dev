@@ -1,0 +1,23 @@
+# 开发模式 Dockerfile
+# 使用 Node.js 18 版本
+FROM node:18-alpine
+
+# 设置工作目录
+WORKDIR /app
+
+# 先复制 package.json 和 package-lock.json
+# 这样只有当这些文件更新时才会重新执行 npm install（利用 Docker 层缓存）
+COPY package.json package-lock.json ./
+
+# 安装所有依赖（包括开发依赖，如 nodemon）
+RUN npm ci
+
+# 注意：不复制应用代码，通过 volume 挂载实现热更新
+# COPY . . 这行被注释掉，代码通过 docker-compose.yml 中的 volume 挂载
+
+# 暴露端口（默认3000，可通过环境变量修改）
+EXPOSE 3000
+
+# 开发模式使用 nodemon 实现热更新
+CMD ["npm", "run", "dev"]
+
