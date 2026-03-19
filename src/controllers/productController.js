@@ -37,11 +37,13 @@ const formatProductResponse = (product, productType = null) => {
       reactiveSpecies: details.reactiveSpecies || '',
       storageBuffer: details.storageBuffer || '',
       dilution: details.dilution || '',
-      humanGeneId: details.humanGeneId !== undefined ? details.humanGeneId : null,
+      humanGeneId:
+        details.humanGeneId !== undefined ? details.humanGeneId : null,
       humanGeneLink: details.humanGeneLink || '',
       humanSwissprotNo: details.humanSwissprotNo || '',
       humanSwissprotLink: details.humanSwissprotLink || '',
-      mouseGeneId: details.mouseGeneId !== undefined ? details.mouseGeneId : null,
+      mouseGeneId:
+        details.mouseGeneId !== undefined ? details.mouseGeneId : null,
       mouseGeneLink: details.mouseGeneLink || '',
       mouseSwissprotNo: details.mouseSwissprotNo || '',
       mouseSwissprotLink: details.mouseSwissprotLink || '',
@@ -306,8 +308,16 @@ const getProducts = async (req, res) => {
     const pageSize = parseInt(pagesize, 10) || 10
     const skip = (pageNum - 1) * pageSize
 
-    // 转义搜索关键词中的特殊字符
-    const escapedCnName = cnName ? escapeRegex(cnName) : null
+    // 构建 cnName 模糊匹配：按空格拆分关键词，用 \s+ 连接，兼容数据库中不同空白字符
+    const trimmedCnName = typeof cnName === 'string' ? cnName.trim() : ''
+    let regexPattern = null
+    if (trimmedCnName) {
+      const keywords = trimmedCnName
+        .split(/\s+/)
+        .filter(Boolean)
+        .map(escapeRegex)
+      regexPattern = keywords.length > 0 ? keywords.join('\\s+') : null
+    }
 
     // 统一使用 Product 查询
     const query = {}
@@ -326,8 +336,8 @@ const getProducts = async (req, res) => {
     }
 
     // 如果提供了 cnName，添加模糊匹配
-    if (escapedCnName) {
-      query.cnName = { $regex: escapedCnName, $options: 'i' }
+    if (regexPattern) {
+      query.cnName = { $regex: regexPattern, $options: 'i' }
     }
 
     // 查询总数
@@ -596,7 +606,8 @@ const updateProduct = async (req, res) => {
     )
 
     // 查询更新后的产品类型信息
-    const finalTypeId = updateData.type !== undefined ? updateData.type : product.type
+    const finalTypeId =
+      updateData.type !== undefined ? updateData.type : product.type
     const finalProductType = await ProductType.findOne({ id: finalTypeId })
 
     res.status(200).json({
