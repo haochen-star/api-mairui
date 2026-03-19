@@ -288,7 +288,7 @@ function escapeRegex(str) {
  */
 const getProducts = async (req, res) => {
   try {
-    const { type, page = 1, pagesize = 10, cnName } = req.query
+    const { type, page = 1, pagesize = 10, cnName, productNo } = req.query
 
     // 检查数据库连接状态
     const dbStatus = mongoose.connection.readyState
@@ -310,13 +310,24 @@ const getProducts = async (req, res) => {
 
     // 构建 cnName 模糊匹配：按空格拆分关键词，用 \s+ 连接，兼容数据库中不同空白字符
     const trimmedCnName = typeof cnName === 'string' ? cnName.trim() : ''
-    let regexPattern = null
+    let cnNameRegexPattern = null
     if (trimmedCnName) {
       const keywords = trimmedCnName
         .split(/\s+/)
         .filter(Boolean)
         .map(escapeRegex)
-      regexPattern = keywords.length > 0 ? keywords.join('\\s+') : null
+      cnNameRegexPattern = keywords.length > 0 ? keywords.join('\\s+') : null
+    }
+
+    // 构建 productNo（货号）模糊匹配：支持部分匹配，按空格拆分关键词
+    const trimmedProductNo = typeof productNo === 'string' ? productNo.trim() : ''
+    let productNoRegexPattern = null
+    if (trimmedProductNo) {
+      const keywords = trimmedProductNo
+        .split(/\s+/)
+        .filter(Boolean)
+        .map(escapeRegex)
+      productNoRegexPattern = keywords.length > 0 ? keywords.join('\\s+') : null
     }
 
     // 统一使用 Product 查询
@@ -336,8 +347,13 @@ const getProducts = async (req, res) => {
     }
 
     // 如果提供了 cnName，添加模糊匹配
-    if (regexPattern) {
-      query.cnName = { $regex: regexPattern, $options: 'i' }
+    if (cnNameRegexPattern) {
+      query.cnName = { $regex: cnNameRegexPattern, $options: 'i' }
+    }
+
+    // 如果提供了 productNo（货号），添加模糊匹配
+    if (productNoRegexPattern) {
+      query.productNo = { $regex: productNoRegexPattern, $options: 'i' }
     }
 
     // 查询总数
