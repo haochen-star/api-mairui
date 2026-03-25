@@ -6,9 +6,11 @@ const mongoose = require('mongoose')
  * 格式化产品返回数据，统一处理 details 字段
  * @param {Object} product - Product 对象
  * @param {Object} productType - ProductType 对象（可选）
+ * @param {Object} [options] - 可选
+ * @param {'cnName'|'productNo'|'both'} [options.keywordMatchField] - 仅 keyword 综合搜索时：关键词命中的字段
  * @returns {Object} 格式化后的产品对象
  */
-const formatProductResponse = (product, productType = null) => {
+const formatProductResponse = (product, productType = null, options = {}) => {
   // 判断是否为复杂类型
   const hasDetails = productType ? productType.hasDetails : false
 
@@ -70,6 +72,10 @@ const formatProductResponse = (product, productType = null) => {
   } else {
     // 简单类型：details 返回 null
     formatted.details = null
+  }
+
+  if (options.keywordMatchField) {
+    formatted.keywordMatchField = options.keywordMatchField
   }
 
   return formatted
@@ -288,7 +294,8 @@ function escapeRegex(str) {
  */
 const getProducts = async (req, res) => {
   try {
-    const { type, page = 1, pagesize = 10, cnName, productNo } = req.query
+    const { type, page = 1, pagesize = 10, keyword, cnName, productNo } =
+      req.query
 
     // 检查数据库连接状态
     const dbStatus = mongoose.connection.readyState
@@ -308,10 +315,22 @@ const getProducts = async (req, res) => {
     const pageSize = parseInt(pagesize, 10) || 10
     const skip = (pageNum - 1) * pageSize
 
+    // 综合关键词：同时匹配中文名或货号（OR）；与单独传 cnName/productNo 互斥
+    const trimmedKeyword =
+      typeof keyword === 'string' ? keyword.trim() : ''
+    let keywordRegexPattern = null
+    if (trimmedKeyword) {
+      const kwParts = trimmedKeyword
+        .split(/\s+/)
+        .filter(Boolean)
+        .map(escapeRegex)
+      keywordRegexPattern = kwParts.length > 0 ? kwParts.join('\\s+') : null
+    }
+
     // 构建 cnName 模糊匹配：按空格拆分关键词，用 \s+ 连接，兼容数据库中不同空白字符
     const trimmedCnName = typeof cnName === 'string' ? cnName.trim() : ''
     let cnNameRegexPattern = null
-    if (trimmedCnName) {
+    if (!keywordRegexPattern && trimmedCnName) {
       const keywords = trimmedCnName
         .split(/\s+/)
         .filter(Boolean)
@@ -322,7 +341,7 @@ const getProducts = async (req, res) => {
     // 构建 productNo（货号）模糊匹配：支持部分匹配，按空格拆分关键词
     const trimmedProductNo = typeof productNo === 'string' ? productNo.trim() : ''
     let productNoRegexPattern = null
-    if (trimmedProductNo) {
+    if (!keywordRegexPattern && trimmedProductNo) {
       const keywords = trimmedProductNo
         .split(/\s+/)
         .filter(Boolean)
@@ -346,14 +365,20 @@ const getProducts = async (req, res) => {
       }
     }
 
-    // 如果提供了 cnName，添加模糊匹配
-    if (cnNameRegexPattern) {
-      query.cnName = { $regex: cnNameRegexPattern, $options: 'i' }
-    }
+    // 综合关键词：中文名或货号任一匹配
+    if (keywordRegexPattern) {
+      const regex = { $regex: keywordRegexPattern, $options: 'i' }
+      query.$or = [{ cnName: regex }, { productNo: regex }]
+    } else {
+      // 如果提供了 cnName，添加模糊匹配
+      if (cnNameRegexPattern) {
+        query.cnName = { $regex: cnNameRegexPattern, $options: 'i' }
+      }
 
-    // 如果提供了 productNo（货号），添加模糊匹配
-    if (productNoRegexPattern) {
-      query.productNo = { $regex: productNoRegexPattern, $options: 'i' }
+      // 如果提供了 productNo（货号），添加模糊匹配
+      if (productNoRegexPattern) {
+        query.productNo = { $regex: productNoRegexPattern, $options: 'i' }
+      }
     }
 
     // 查询总数
@@ -378,10 +403,37 @@ const getProducts = async (req, res) => {
       productTypeMap.set(pt.id, pt)
     })
 
-    // 格式化返回数据
+    // 格式化返回数据（keyword 查询时标注命中 cnName / productNo / 两者）
+    let keywordMatchRegex = null
+    if (keywordRegexPattern) {
+      try {
+        keywordMatchRegex = new RegExp(keywordRegexPattern, 'i')
+      } catch (e) {
+        keywordMatchRegex = null
+      }
+    }
+
     products = foundProducts.map((product) => {
       const productType = productTypeMap.get(product.type) || null
-      return formatProductResponse(product, productType)
+      let formatOpts = {}
+      if (keywordMatchRegex) {
+        const cn = product.cnName || ''
+        const pn = product.productNo || ''
+        const matchCn = keywordMatchRegex.test(cn)
+        const matchPn = keywordMatchRegex.test(pn)
+        let keywordMatchField
+        if (matchCn && matchPn) {
+          keywordMatchField = 'both'
+        } else if (matchPn) {
+          keywordMatchField = 'productNo'
+        } else if (matchCn) {
+          keywordMatchField = 'cnName'
+        }
+        if (keywordMatchField) {
+          formatOpts = { keywordMatchField }
+        }
+      }
+      return formatProductResponse(product, productType, formatOpts)
     })
 
     // 计算总页数
