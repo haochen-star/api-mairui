@@ -21,6 +21,11 @@ const productTypeSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  // 仅当 hasDetails 为 true 时有意义：0 = 抗体，1 = TSA
+  detailType: {
+    type: Number,
+    enum: [0, 1]
+  },
   createdAt: {
     type: Date,
     default: Date.now

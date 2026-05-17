@@ -1,6 +1,39 @@
 const Product = require('../models/Product')
 const ProductType = require('../models/ProductType')
+const { buildTypeTree } = require('./productTypeController')
 const mongoose = require('mongoose')
+
+/** TSA（detailType=1）：富文本 + 说明书 PDF + 多图/imgDesc（与前台轮播字段对齐） */
+function normalizeTsaDetails(raw) {
+  const src =
+    raw !== undefined && raw !== null && typeof raw === 'object' ? raw : {}
+  const v = src.customContentHtml
+  const html =
+    typeof v === 'string' ? v : v != null && v !== '' ? String(v) : ''
+  const m = src.manualPdfUrl
+  const manualPdfUrl =
+    typeof m === 'string' ? m.trim() : m != null && `${m}` ? String(m).trim() : ''
+  const imgRaw = src.img
+  const img =
+    typeof imgRaw === 'string'
+      ? imgRaw.trim()
+      : imgRaw != null && `${imgRaw}`
+        ? String(imgRaw).trim()
+        : ''
+  const descRaw = src.imgDesc
+  const imgDesc =
+    typeof descRaw === 'string'
+      ? descRaw
+      : descRaw != null && `${descRaw}`
+        ? String(descRaw)
+        : ''
+  return {
+    customContentHtml: html,
+    manualPdfUrl,
+    img,
+    imgDesc
+  }
+}
 
 /**
  * 格式化产品返回数据，统一处理 details 字段
@@ -12,7 +45,7 @@ const mongoose = require('mongoose')
  */
 const formatProductResponse = (product, productType = null, options = {}) => {
   // 判断是否为复杂类型
-  const hasDetails = productType ? productType.hasDetails : false
+  const hasDetails = productType ? !!productType.hasDetails : false
 
   // 基础顶层字段（所有类型都有）
   const formatted = {
@@ -24,53 +57,63 @@ const formatProductResponse = (product, productType = null, options = {}) => {
     background: product.background || '',
     categoryFlag: product.categoryFlag || '',
     type: product.type,
-    createdAt: product.createdAt
+    createdAt: product.createdAt,
+    hasDetails
   }
 
-  // 处理 details 字段
   if (hasDetails) {
-    // 复杂类型：返回包含所有33个字段的details对象
-    const details = product.details || {}
-    formatted.details = {
-      alias: details.alias || '',
-      geneName: details.geneName || '',
-      proteinName: details.proteinName || '',
-      application: details.application || '',
-      reactiveSpecies: details.reactiveSpecies || '',
-      storageBuffer: details.storageBuffer || '',
-      dilution: details.dilution || '',
-      humanGeneId:
-        details.humanGeneId !== undefined ? details.humanGeneId : null,
-      humanGeneLink: details.humanGeneLink || '',
-      humanSwissprotNo: details.humanSwissprotNo || '',
-      humanSwissprotLink: details.humanSwissprotLink || '',
-      mouseGeneId:
-        details.mouseGeneId !== undefined ? details.mouseGeneId : null,
-      mouseGeneLink: details.mouseGeneLink || '',
-      mouseSwissprotNo: details.mouseSwissprotNo || '',
-      mouseSwissprotLink: details.mouseSwissprotLink || '',
-      ratGeneId: details.ratGeneId !== undefined ? details.ratGeneId : null,
-      ratGeneLink: details.ratGeneLink || '',
-      ratSwissprotNo: details.ratSwissprotNo || '',
-      ratSwissprotLink: details.ratSwissprotLink || '',
-      reference: details.reference || '',
-      referenceMolecularWeight: details.referenceMolecularWeight || '',
-      predictedMolecularWeight: details.predictedMolecularWeight || '',
-      storageCondition: details.storageCondition || '',
-      host: details.host || '',
-      isotype: details.isotype || '',
-      cellLocalization: details.cellLocalization || '',
-      signalingPathway: details.signalingPathway || '',
-      function: details.function || '',
-      stockStatus: details.stockStatus || '',
-      purification: details.purification || '',
-      clonality: details.clonality || '',
-      manual: details.manual || '',
-      img: details.img || '',
-      imgDesc: details.imgDesc || ''
+    const dt = productType.detailType
+    const detailTypeNorm = dt === 0 || dt === 1 ? dt : 0
+    formatted.detailType = detailTypeNorm
+
+    if (detailTypeNorm === 1) {
+      const rawDetails =
+        product.details && typeof product.details === 'object'
+          ? product.details
+          : {}
+      formatted.details = normalizeTsaDetails(rawDetails)
+    } else {
+      const details = product.details || {}
+      formatted.details = {
+        alias: details.alias || '',
+        geneName: details.geneName || '',
+        proteinName: details.proteinName || '',
+        application: details.application || '',
+        reactiveSpecies: details.reactiveSpecies || '',
+        storageBuffer: details.storageBuffer || '',
+        dilution: details.dilution || '',
+        humanGeneId:
+          details.humanGeneId !== undefined ? details.humanGeneId : null,
+        humanGeneLink: details.humanGeneLink || '',
+        humanSwissprotNo: details.humanSwissprotNo || '',
+        humanSwissprotLink: details.humanSwissprotLink || '',
+        mouseGeneId:
+          details.mouseGeneId !== undefined ? details.mouseGeneId : null,
+        mouseGeneLink: details.mouseGeneLink || '',
+        mouseSwissprotNo: details.mouseSwissprotNo || '',
+        mouseSwissprotLink: details.mouseSwissprotLink || '',
+        ratGeneId: details.ratGeneId !== undefined ? details.ratGeneId : null,
+        ratGeneLink: details.ratGeneLink || '',
+        ratSwissprotNo: details.ratSwissprotNo || '',
+        ratSwissprotLink: details.ratSwissprotLink || '',
+        reference: details.reference || '',
+        referenceMolecularWeight: details.referenceMolecularWeight || '',
+        predictedMolecularWeight: details.predictedMolecularWeight || '',
+        storageCondition: details.storageCondition || '',
+        host: details.host || '',
+        isotype: details.isotype || '',
+        cellLocalization: details.cellLocalization || '',
+        signalingPathway: details.signalingPathway || '',
+        function: details.function || '',
+        stockStatus: details.stockStatus || '',
+        purification: details.purification || '',
+        clonality: details.clonality || '',
+        manual: details.manual || '',
+        img: details.img || '',
+        imgDesc: details.imgDesc || ''
+      }
     }
   } else {
-    // 简单类型：details 返回 null
     formatted.details = null
   }
 
@@ -82,44 +125,62 @@ const formatProductResponse = (product, productType = null, options = {}) => {
 }
 
 /**
- * 构建树形结构
- * @param {Array} types - 所有类型数组
- * @returns {Array} 树形结构数组
+ * 根据类型决定将请求的 details 写入库（TSA：customContentHtml、manualPdfUrl、img、imgDesc）
+ * @param {Object|null} productType
+ * @param {*} bodyDetails
+ * @returns {null|*}
  */
-function buildTree(types) {
-  const typeMap = new Map()
-  const rootTypes = []
+function resolveProductDetailsForSave(productType, bodyDetails) {
+  if (!productType || !productType.hasDetails) return null
+  const dt = productType.detailType
+  const detailTypeNorm = dt === 0 || dt === 1 ? dt : 0
+  if (detailTypeNorm === 1) {
+    return normalizeTsaDetails(bodyDetails)
+  }
+  return bodyDetails || null
+}
 
-  // 创建类型映射
-  types.forEach((type) => {
-    typeMap.set(type.id, {
-      id: type.id,
-      label: type.label,
-      parentId: type.parentId,
-      hasDetails: type.hasDetails,
-      children: []
-    })
-  })
+/**
+ * 列表接口专用：不含 hasDetails / detailType；复杂类型保留 details.img 供卡片缩略图（抗体与 TSA）
+ * @param {Object} product
+ * @param {Object|null} productType
+ * @param {Object} [options]
+ * @returns {Object}
+ */
+function formatProductListItem(product, productType = null, options = {}) {
+  const formatted = {
+    id: product.id,
+    productNo: product.productNo || '',
+    cnName: product.cnName || '',
+    productImage: product.productImage || '',
+    price: product.price || '',
+    background: product.background || '',
+    categoryFlag: product.categoryFlag || '',
+    type: product.type,
+    createdAt: product.createdAt,
+    details: null
+  }
 
-  // 构建树形结构
-  types.forEach((type) => {
-    const typeNode = typeMap.get(type.id)
-    if (type.parentId === null || type.parentId === undefined) {
-      // 根节点
-      rootTypes.push(typeNode)
-    } else {
-      // 子节点
-      const parent = typeMap.get(type.parentId)
-      if (parent) {
-        parent.children.push(typeNode)
-      } else {
-        // 如果找不到父节点，也作为根节点处理
-        rootTypes.push(typeNode)
+  if (productType && productType.hasDetails) {
+    const dt = productType.detailType
+    const detailTypeNorm = dt === 0 || dt === 1 ? dt : 0
+    if (detailTypeNorm === 0 || detailTypeNorm === 1) {
+      const raw =
+        product.details && typeof product.details === 'object'
+          ? product.details
+          : {}
+      const img = raw.img || ''
+      if (img) {
+        formatted.details = { img }
       }
     }
-  })
+  }
 
-  return rootTypes
+  if (options.keywordMatchField) {
+    formatted.keywordMatchField = options.keywordMatchField
+  }
+
+  return formatted
 }
 
 /**
@@ -145,8 +206,8 @@ const getProductTypes = async (req, res) => {
     // 查询所有类型
     const types = await ProductType.find({}).sort({ id: 1 }).exec()
 
-    // 构建树形结构
-    const tree = buildTree(types)
+    // 构建树形结构（与 /api/product-type 一致）
+    const tree = buildTypeTree(types)
 
     res.status(200).json({
       success: true,
@@ -234,7 +295,7 @@ const createProduct = async (req, res) => {
       background: background || undefined,
       categoryFlag: categoryFlag || undefined,
       type: typeId,
-      details: productType.hasDetails ? details || null : null
+      details: resolveProductDetailsForSave(productType, details)
     }
 
     const newProduct = new Product(productData)
@@ -293,9 +354,17 @@ function escapeRegex(str) {
  * @param {Object} res - Express 响应对象
  */
 const getProducts = async (req, res) => {
+  let total = 0
+  let products = []
   try {
-    const { type, page = 1, pagesize = 10, keyword, cnName, productNo } =
-      req.query
+    const {
+      type,
+      page = 1,
+      pagesize = 10,
+      keyword,
+      cnName,
+      productNo
+    } = req.query
 
     // 检查数据库连接状态
     const dbStatus = mongoose.connection.readyState
@@ -316,8 +385,7 @@ const getProducts = async (req, res) => {
     const skip = (pageNum - 1) * pageSize
 
     // 综合关键词：同时匹配中文名或货号（OR）；与单独传 cnName/productNo 互斥
-    const trimmedKeyword =
-      typeof keyword === 'string' ? keyword.trim() : ''
+    const trimmedKeyword = typeof keyword === 'string' ? keyword.trim() : ''
     let keywordRegexPattern = null
     if (trimmedKeyword) {
       const kwParts = trimmedKeyword
@@ -339,7 +407,8 @@ const getProducts = async (req, res) => {
     }
 
     // 构建 productNo（货号）模糊匹配：支持部分匹配，按空格拆分关键词
-    const trimmedProductNo = typeof productNo === 'string' ? productNo.trim() : ''
+    const trimmedProductNo =
+      typeof productNo === 'string' ? productNo.trim() : ''
     let productNoRegexPattern = null
     if (!keywordRegexPattern && trimmedProductNo) {
       const keywords = trimmedProductNo
@@ -433,7 +502,7 @@ const getProducts = async (req, res) => {
           formatOpts = { keywordMatchField }
         }
       }
-      return formatProductResponse(product, productType, formatOpts)
+      return formatProductListItem(product, productType, formatOpts)
     })
 
     // 计算总页数
@@ -641,24 +710,31 @@ const updateProduct = async (req, res) => {
 
       updateData.type = typeId
 
-      // 根据类型的 hasDetails 字段决定是否更新 details
-      if (productType.hasDetails && details !== undefined) {
-        updateData.details = details
-      } else if (!productType.hasDetails) {
-        // 如果类型不需要 details，清空 details
+      if (!productType.hasDetails) {
         updateData.details = null
+      } else {
+        const dt =
+          productType.detailType === 0 || productType.detailType === 1
+            ? productType.detailType
+            : 0
+        if (dt === 1) {
+          updateData.details = resolveProductDetailsForSave(productType, details)
+        } else if (details !== undefined) {
+          updateData.details = resolveProductDetailsForSave(productType, details)
+        }
       }
     } else if (details !== undefined) {
-      // 如果只更新 details，需要检查当前类型是否需要 details
       const currentType = await ProductType.findOne({ id: product.type })
-      if (currentType && currentType.hasDetails) {
-        updateData.details = details
-      } else {
+      if (!currentType || !currentType.hasDetails) {
         return res.status(400).json({
           success: false,
           message: '当前产品类型不支持 details 字段'
         })
       }
+      updateData.details = resolveProductDetailsForSave(
+        currentType,
+        details
+      )
     }
 
     if (cnName !== undefined) updateData.cnName = cnName
@@ -971,7 +1047,7 @@ const bulkCreateProducts = async (req, res) => {
           background: background || undefined,
           categoryFlag: categoryFlag || undefined,
           type: typeId,
-          details: productType.hasDetails ? details || null : null
+          details: resolveProductDetailsForSave(productType, details)
         }
 
         const newProduct = new Product(newProductData)

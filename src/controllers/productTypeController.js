@@ -3,38 +3,85 @@ const Product = require('../models/Product')
 const mongoose = require('mongoose')
 
 /**
- * 构建树形结构
+ * 规范化 detailType：仅 0|1 有效，否则视为 0（抗体，兼容存量）
+ * @param {*} raw
+ * @returns {0|1}
+ */
+function normalizeDetailType(raw) {
+  const n = typeof raw === 'number' ? raw : parseInt(raw, 10)
+  if (n === 0 || n === 1) return n
+  return 0
+}
+
+/**
+ * 序列化类型节点（树或列表）：hasDetails 为 false 时不包含 detailType
+ * @param {object} type - Mongoose 文档或 plain object
+ * @returns {{ id: number, label: string, parentId: number|null, hasDetails: boolean, detailType?: 0|1 }}
+ */
+function serializeProductTypeBase(type) {
+  const hasDetails = !!type.hasDetails
+  const o = {
+    id: type.id,
+    label: type.label,
+    parentId: type.parentId,
+    hasDetails
+  }
+  if (hasDetails) {
+    o.detailType = normalizeDetailType(type.detailType)
+  }
+  return o
+}
+
+/**
+ * 单条类型 API 响应（含时间戳）
+ * @param {object} type
+ */
+function serializeProductTypeForResponse(type) {
+  return {
+    ...serializeProductTypeBase(type),
+    createdAt: type.createdAt,
+    updatedAt: type.updatedAt
+  }
+}
+
+/**
+ * 从请求体解析 detailType；未传或空串返回 undefined（表示未提交该字段）
+ * @param {*} raw
+ * @returns {0|1|undefined|'invalid'}
+ */
+function parseDetailTypeInput(raw) {
+  if (raw === undefined || raw === null || raw === '') return undefined
+  if (typeof raw === 'boolean') return 'invalid'
+  const n = typeof raw === 'number' ? raw : parseInt(raw, 10)
+  if (n === 0 || n === 1) return n
+  return 'invalid'
+}
+
+/**
+ * 构建树形结构（与 productController 共用）
  * @param {Array} types - 所有类型数组
  * @returns {Array} 树形结构数组
  */
-function buildTree(types) {
+function buildTypeTree(types) {
   const typeMap = new Map()
   const rootTypes = []
 
-  // 创建类型映射
-  types.forEach(type => {
+  types.forEach((type) => {
     typeMap.set(type.id, {
-      id: type.id,
-      label: type.label,
-      parentId: type.parentId,
-      hasDetails: type.hasDetails,
+      ...serializeProductTypeBase(type),
       children: []
     })
   })
 
-  // 构建树形结构
-  types.forEach(type => {
+  types.forEach((type) => {
     const typeNode = typeMap.get(type.id)
     if (type.parentId === null || type.parentId === undefined) {
-      // 根节点
       rootTypes.push(typeNode)
     } else {
-      // 子节点
       const parent = typeMap.get(type.parentId)
       if (parent) {
         parent.children.push(typeNode)
       } else {
-        // 如果找不到父节点，也作为根节点处理
         rootTypes.push(typeNode)
       }
     }
@@ -64,12 +111,10 @@ const getProductTypes = async (req, res) => {
     }
 
     // 查询所有类型
-    const types = await ProductType.find({})
-      .sort({ id: 1 })
-      .exec()
+    const types = await ProductType.find({}).sort({ id: 1 }).exec()
 
     // 构建树形结构
-    const tree = buildTree(types)
+    const tree = buildTypeTree(types)
 
     res.status(200).json({
       success: true,
@@ -132,14 +177,7 @@ const getProductTypeById = async (req, res) => {
       success: true,
       message: '获取产品类型成功！',
       data: {
-        type: {
-          id: type.id,
-          label: type.label,
-          parentId: type.parentId,
-          hasDetails: type.hasDetails,
-          createdAt: type.createdAt,
-          updatedAt: type.updatedAt
-        }
+        type: serializeProductTypeForResponse(type)
       }
     })
   } catch (error) {
@@ -159,7 +197,7 @@ const getProductTypeById = async (req, res) => {
  */
 const createProductType = async (req, res) => {
   try {
-    const { label, parentId, hasDetails } = req.body
+    const { label, parentId, hasDetails, detailType } = req.body
 
     // 验证必填字段
     if (!label || label.trim() === '') {
@@ -204,11 +242,25 @@ const createProductType = async (req, res) => {
       finalParentId = parentIdNum
     }
 
+    const finalHasDetails = hasDetails === true
+    let finalDetailType
+    if (finalHasDetails) {
+      const parsed = parseDetailTypeInput(detailType)
+      if (parsed === 'invalid') {
+        return res.status(400).json({
+          success: false,
+          message: 'detailType 必须为 0（抗体）或 1（TSA）'
+        })
+      }
+      finalDetailType = parsed === undefined ? 0 : parsed
+    }
+
     // 创建类型
     const newType = new ProductType({
       label: label.trim(),
       parentId: finalParentId,
-      hasDetails: hasDetails === true
+      hasDetails: finalHasDetails,
+      detailType: finalHasDetails ? finalDetailType : undefined
     })
 
     const savedType = await newType.save()
@@ -217,14 +269,7 @@ const createProductType = async (req, res) => {
       success: true,
       message: '产品类型创建成功！',
       data: {
-        type: {
-          id: savedType.id,
-          label: savedType.label,
-          parentId: savedType.parentId,
-          hasDetails: savedType.hasDetails,
-          createdAt: savedType.createdAt,
-          updatedAt: savedType.updatedAt
-        }
+        type: serializeProductTypeForResponse(savedType)
       }
     })
   } catch (error) {
@@ -255,7 +300,7 @@ const createProductType = async (req, res) => {
 const updateProductType = async (req, res) => {
   try {
     const { id } = req.params
-    const { label, parentId, hasDetails } = req.body
+    const { label, parentId, hasDetails, detailType } = req.body
 
     // 验证 ID
     const typeId = parseInt(id, 10)
@@ -341,20 +386,35 @@ const updateProductType = async (req, res) => {
     // 更新类型
     Object.assign(type, updateData)
     type.updatedAt = new Date()
+
+    const hd = !!type.hasDetails
+    if (!hd) {
+      type.set('detailType', undefined)
+    } else {
+      if (Object.prototype.hasOwnProperty.call(req.body, 'detailType')) {
+        const parsed = parseDetailTypeInput(detailType)
+        if (parsed === 'invalid') {
+          return res.status(400).json({
+            success: false,
+            message: 'detailType 必须为 0（抗体）或 1（TSA）'
+          })
+        }
+        type.detailType = parsed === undefined ? 0 : parsed
+      } else if (hasDetails !== undefined && hasDetails === true) {
+        const cur = type.detailType
+        if (cur !== 0 && cur !== 1) {
+          type.detailType = 0
+        }
+      }
+    }
+
     const savedType = await type.save()
 
     res.status(200).json({
       success: true,
       message: '产品类型更新成功！',
       data: {
-        type: {
-          id: savedType.id,
-          label: savedType.label,
-          parentId: savedType.parentId,
-          hasDetails: savedType.hasDetails,
-          createdAt: savedType.createdAt,
-          updatedAt: savedType.updatedAt
-        }
+        type: serializeProductTypeForResponse(savedType)
       }
     })
   } catch (error) {
@@ -526,6 +586,9 @@ module.exports = {
   createProductType,
   updateProductType,
   getProductCount,
-  deleteProductType
+  deleteProductType,
+  buildTypeTree,
+  serializeProductTypeBase,
+  serializeProductTypeForResponse,
+  normalizeDetailType
 }
-

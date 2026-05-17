@@ -1,7 +1,7 @@
-const express = require('express');
-const router = express.Router();
-const authMiddleware = require('../middleware/authMiddleware');
-const { requireRole } = require('../middleware/roleMiddleware');
+const express = require('express')
+const router = express.Router()
+const authMiddleware = require('../middleware/authMiddleware')
+const { requireRole } = require('../middleware/roleMiddleware')
 const {
   getProductTypes,
   getProductTypeById,
@@ -9,7 +9,7 @@ const {
   updateProductType,
   getProductCount,
   deleteProductType
-} = require('../controllers/productTypeController');
+} = require('../controllers/productTypeController')
 
 /**
  * @route   GET /api/product-type
@@ -17,7 +17,7 @@ const {
  * @access  Public (公开访问)
  * @example GET /api/product-type
  */
-router.get('/', getProductTypes);
+router.get('/', getProductTypes)
 
 /**
  * @route   GET /api/product-type/:id/product-count
@@ -25,7 +25,12 @@ router.get('/', getProductTypes);
  * @access  Private (需要登录 + 超级管理员或管理员权限)
  * @example GET /api/product-type/1/product-count
  */
-router.get('/:id/product-count', authMiddleware, requireRole(['super_admin', 'admin']), getProductCount);
+router.get(
+  '/:id/product-count',
+  authMiddleware,
+  requireRole(['super_admin', 'admin']),
+  getProductCount
+)
 
 /**
  * @route   GET /api/product-type/:id
@@ -33,37 +38,49 @@ router.get('/:id/product-count', authMiddleware, requireRole(['super_admin', 'ad
  * @access  Public (公开访问)
  * @example GET /api/product-type/1
  */
-router.get('/:id', getProductTypeById);
+router.get('/:id', getProductTypeById)
 
 /**
  * @route   POST /api/product-type
  * @desc    创建产品类型
  * @access  Private (需要登录 + 超级管理员或管理员权限)
  * @example POST /api/product-type
- * 
+ *
  * 请求体：
  * {
  *   "label": "新类型",
  *   "parentId": 1,  // 可选，不提供则创建一级分类
- *   "hasDetails": false  // 可选，默认 false
+ *   "hasDetails": false,  // 可选，默认 false
+ *   "detailType": 0  // 可选；仅当 hasDetails 为 true 时有效：0=抗体，1=TSA；不传则默认为 0
  * }
  */
-router.post('/', authMiddleware, requireRole(['super_admin', 'admin']), createProductType);
+router.post(
+  '/',
+  authMiddleware,
+  requireRole(['super_admin', 'admin']),
+  createProductType
+)
 
 /**
  * @route   PUT /api/product-type/:id
  * @desc    更新产品类型
  * @access  Private (需要登录 + 超级管理员或管理员权限)
  * @example PUT /api/product-type/1
- * 
+ *
  * 请求体（所有字段可选）：
  * {
  *   "label": "更新后的类型",
  *   "parentId": 2,  // 可选，设置为 null 可将子分类提升为一级分类
- *   "hasDetails": true
+ *   "hasDetails": true,
+ *   "detailType": 1  // 可选；仅当 hasDetails 为 true 时有效：0=抗体，1=TSA
  * }
  */
-router.put('/:id', authMiddleware, requireRole(['super_admin', 'admin']), updateProductType);
+router.put(
+  '/:id',
+  authMiddleware,
+  requireRole(['super_admin', 'admin']),
+  updateProductType
+)
 
 /**
  * @route   DELETE /api/product-type/:id
@@ -72,7 +89,11 @@ router.put('/:id', authMiddleware, requireRole(['super_admin', 'admin']), update
  * @example DELETE /api/product-type/1
  * @example DELETE /api/product-type/1?force=true  // 强制删除（同时删除关联产品）
  */
-router.delete('/:id', authMiddleware, requireRole(['super_admin', 'admin']), deleteProductType);
+router.delete(
+  '/:id',
+  authMiddleware,
+  requireRole(['super_admin', 'admin']),
+  deleteProductType
+)
 
-module.exports = router;
-
+module.exports = router
